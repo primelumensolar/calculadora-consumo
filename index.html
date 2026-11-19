@@ -329,7 +329,6 @@ function gerarPDF(){
   const s=summary();
   const hoje=new Date().toLocaleDateString('pt-BR');
   const logo=settings.logo?`<img src="${settings.logo}">`:'';
-  const hist=client.history.map(h=>`<tr><td>${esc(h.month)||'-'}</td><td>${h.kwh?fmt(num(h.kwh),0):'-'}</td><td>${h.value?'R$ '+fmt(num(h.value)):'-'}</td></tr>`).join('');
   const apps=client.appliances.length
     ? client.appliances.map(a=>`<tr><td>${esc(a.name)||'-'}${a.type==='ac'?` (${fmt(num(a.btu),0)} BTU)`:''}</td><td>${num(a.qty)||1}</td><td>${num(a.hours)} h/dia</td><td>${fmt(applianceKwh(a),1)}</td></tr>`).join('')
     : '<tr><td colspan="4">Nenhum aparelho</td></tr>';
@@ -345,8 +344,6 @@ function gerarPDF(){
       <tr><td>Consumo dos aparelhos</td><td>${fmt(s.appKwh,1)}</td><td>${fmt(s.appValue)}</td></tr>
       <tr><td><b>Projeção total</b></td><td><b>${fmt(s.projKwh,1)}</b></td><td><b>${fmt(s.projValue)}</b></td></tr>
     </table>
-    <h3>Histórico de consumo (últimos 12 meses)</h3>
-    <table><tr><th>Mês</th><th>kWh</th><th>Valor</th></tr>${hist}</table>
     <h3>Aparelhos</h3>
     <table><tr><th>Aparelho</th><th>Qtd</th><th>Uso</th><th>kWh/mês</th></tr>${apps}</table>
     ${imgs}
