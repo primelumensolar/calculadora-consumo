@@ -3,403 +3,199 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Prime Lumen - Consumo</title>
+<title>Prime Lumen - Cálculo de Consumo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--primary:#2f4a1c;--highlight:#b8b52a;}
-body{font-family:Arial,sans-serif;margin:0;background:#f4f4f1;color:#222;}
-header{background:var(--primary);color:#fff;padding:12px 16px;}
-header h1{margin:0;font-size:20px;}
-main{padding:12px;max-width:900px;margin:auto;}
-section{background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);}
-h2{font-size:17px;color:var(--primary);margin-top:0;}
-label{display:block;font-size:14px;margin:6px 0 2px;}
-input,select{width:100%;box-sizing:border-box;padding:8px;font-size:16px;border:1px solid #bbb;border-radius:6px;}
-button{background:var(--primary);color:#fff;border:0;padding:10px 14px;border-radius:6px;font-size:15px;margin:4px 2px;cursor:pointer;}
-button.secondary{background:var(--highlight);color:#222;}
-button.danger{background:#a33;}
-table{width:100%;border-collapse:collapse;font-size:14px;}
-td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left;}
-.grid{display:grid;grid-template-columns:1fr;gap:6px;}
-@media(min-width:640px){.grid{grid-template-columns:1fr 1fr;}}
-.card{border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:8px;}
-.result{background:#eef3e4;border-left:5px solid var(--highlight);padding:10px;border-radius:6px;font-size:15px;}
-.hint{font-size:13px;color:#666;}
-#logoPreview{max-height:60px;margin-top:6px;}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f1;color:#222}
+header{background:var(--primary);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px}
+header img{max-height:48px;max-width:120px}
+header h1{font-size:20px;margin:0}
+header small{color:var(--highlight);font-size:14px}
+main{padding:12px;max-width:800px;margin:auto}
+section{background:#fff;border-radius:10px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+h2{font-size:17px;color:var(--primary);margin:0 0 10px}
+label{display:block;font-size:13px;margin:8px 0 3px;color:#444}
+input,button{width:100%;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:6px}
+input[type=color]{height:44px;padding:4px}
+input[type=file]{font-size:14px;padding:6px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{background:var(--primary);color:#fff;border:none;cursor:pointer;margin-top:8px}
+button.alt{background:var(--highlight);color:#222}
+button.danger{background:#a33}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+th,td{border-bottom:1px solid #ddd;padding:6px;text-align:left}
+td input{padding:6px;font-size:14px}
+.item{border:1px solid #ddd;border-radius:8px;padding:10px;margin-top:8px}
+.result{font-size:15px;line-height:1.7}
+.result b{color:var(--primary)}
+.status{font-size:14px;color:#444;margin-top:6px}
+#print-area{display:none}
+@media print{
+  body>*:not(#print-area){display:none!important}
+  #print-area{display:block!important;color:#000;font-family:Arial,Helvetica,sans-serif}
+  .rep-head{display:flex;align-items:center;gap:12px;border-bottom:3px solid var(--primary);padding-bottom:8px}
+  .rep-head img{max-height:70px;max-width:180px}
+  .rep-head h1{color:var(--primary);margin:0;font-size:22px}
+  .rep-head p{margin:2px 0;color:var(--highlight);font-weight:bold}
+  #print-area h2{color:var(--primary);font-size:17px;margin:14px 0 4px}
+  #print-area h3{color:var(--primary);margin:14px 0 4px;font-size:14px}
+  #print-area table{width:100%;border-collapse:collapse;font-size:12px}
+  #print-area th{background:var(--primary);color:#fff;text-align:left;padding:5px}
+  #print-area td{border-bottom:1px solid #ccc;padding:4px}
+  .bill{width:100%;page-break-before:always;margin-top:8px}
+  .foot{margin-top:20px;border-top:2px solid var(--highlight);padding-top:6px;font-size:11px;color:var(--primary)}
+}
 </style>
 </head>
 <body>
-<header><h1 id="headerTitle">Prime Lumen</h1></header>
+<header>
+  <img id="hdrLogo" src="" alt="" style="display:none">
+  <div><h1 id="hdrName"></h1><small id="hdrSlogan"></small></div>
+</header>
+
 <main>
+  <section>
+    <h2>Configurações da empresa</h2>
+    <label>Nome da empresa</label>
+    <input id="sCompany">
+    <label>Slogan</label>
+    <input id="sSlogan">
+    <label>Logo (PNG ou JPG)</label>
+    <input type="file" id="logoFile" accept="image/*">
+    <div class="row">
+      <div><label>Cor principal</label><input type="color" id="sPrimary"></div>
+      <div><label>Cor de destaque</label><input type="color" id="sHighlight"></div>
+    </div>
+  </section>
 
-<section>
-  <h2>1. Configurações da empresa</h2>
-  <div class="grid">
-    <div><label>Nome da empresa</label><input id="company"></div>
-    <div><label>Slogan</label><input id="slogan"></div>
-    <div><label>Cor principal</label><input type="color" id="primary"></div>
-    <div><label>Cor de destaque</label><input type="color" id="highlight"></div>
-  </div>
-  <label>Logo (PNG ou JPG)</label>
-  <input type="file" id="logoFile" accept="image/*">
-  <img id="logoPreview" alt="">
-  <div><button onclick="saveSettings()">Salvar configurações</button></div>
-</section>
+  <section>
+    <h2>Cliente</h2>
+    <label>Nome</label>
+    <input id="cName">
+    <label>Endereço</label>
+    <input id="cAddress">
+    <label>Tarifa (R$/kWh)</label>
+    <input id="cTariff" type="number" step="0.01" inputmode="decimal">
+  </section>
 
-<section>
-  <h2>2. Cliente</h2>
-  <div class="grid">
-    <div><label>Nome do cliente</label><input id="cName" oninput="saveClient()"></div>
-    <div><label>Endereço</label><input id="cAddr" oninput="saveClient()"></div>
-    <div><label>Tarifa (R$/kWh)</label><input type="number" step="0.01" id="cTariff" oninput="saveClient()"></div>
-  </div>
-</section>
+  <section>
+    <h2>Histórico de consumo (últimos 12 meses)</h2>
+    <p class="status">Envie a conta em PDF para tentar preencher automaticamente, ou um CSV com colunas: mês;kWh;valor. Confira sempre a tabela.</p>
+    <label>Conta de energia (PDF)</label>
+    <input type="file" id="billFile" accept="application/pdf" multiple>
+    <label>Importar CSV</label>
+    <input type="file" id="csvFile" accept=".csv,.txt">
+    <p class="status" id="billStatus"></p>
+    <table>
+      <thead><tr><th>Mês</th><th>kWh</th><th>R$</th></tr></thead>
+      <tbody id="history"></tbody>
+    </table>
+  </section>
 
-<section>
-  <h2>3. Conta de luz do cliente</h2>
-  <p class="hint">Envie o PDF da conta. O app lê o histórico de kWh e anexa as páginas ao relatório.</p>
-  <input type="file" id="billFile" accept="application/pdf,image/*">
-  <p id="billStatus" class="hint"></p>
-</section>
+  <section>
+    <h2>Aparelhos</h2>
+    <button class="alt" id="addDevice">+ Adicionar aparelho</button>
+    <button class="alt" id="addAc">+ Adicionar ar-condicionado (BTU)</button>
+    <div id="appliances"></div>
+  </section>
 
-<section>
-  <h2>4. Histórico de consumo</h2>
-  <p class="hint">Confira os meses lidos da conta e corrija se necessário. Você pode adicionar linhas ou importar um CSV (colunas: mês; kWh; valor).</p>
-  <table>
-    <thead><tr><th>Mês</th><th>kWh</th><th>Valor (R$)</th><th></th></tr></thead>
-    <tbody id="histBody"></tbody>
-  </table>
-  <button class="secondary" onclick="addHist()">+ Adicionar mês</button>
-  <input type="file" id="csvFile" accept=".csv,.txt" style="margin-top:8px">
-  <div class="result" id="avgBox" style="margin-top:10px"></div>
-</section>
+  <section>
+    <h2>Resultado</h2>
+    <div class="result" id="results"></div>
+  </section>
 
-<section>
-  <h2>5. Aparelhos</h2>
-  <p class="hint">Para ar-condicionado, informe os BTU. A fórmula usa 30 dias fixos.</p>
-  <div id="appList"></div>
-  <button class="secondary" onclick="addAppliance('normal')">+ Aparelho</button>
-  <button class="secondary" onclick="addAppliance('ar')">+ Ar-condicionado</button>
-</section>
-
-<section>
-  <h2>6. Resultado</h2>
-  <div class="result" id="summary"></div>
-  <table style="margin-top:10px">
-    <thead><tr><th>Aparelho</th><th>kWh/mês estimado</th><th>kWh/mês ajustado</th></tr></thead>
-    <tbody id="appResults"></tbody>
-  </table>
-</section>
-
-<section>
-  <button onclick="gerarPDF()">Gerar relatório em PDF</button>
-  <button class="danger" onclick="novoCliente()">Novo cliente</button>
-</section>
-
+  <section>
+    <h2>Gerar relatório</h2>
+    <button id="pdfBtn">Gerar PDF (Salvar como PDF)</button>
+    <button class="danger" id="newClient">Novo cliente</button>
+  </section>
 </main>
 
+<div id="print-area"></div>
+
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const KEY = 'primeLumenApp';
-let state = {
-  settings: {company:'Prime Lumen', slogan:'Tecnologia Solar', logo:'', primary:'#2f4a1c', highlight:'#b8b52a'},
-  client: {name:'', address:'', tariff:0.90},
-  history: [],
-  appliances: []
-};
-let billPages = [];
+const DEFAULT_SETTINGS={company:'Prime Lumen',slogan:'Tecnologia Solar',logo:'',primary:'#2f4a1c',highlight:'#b8b52a'};
+const EMPTY_CLIENT=()=>({name:'',address:'',tariff:'0.90',history:Array.from({length:12},()=>({month:'',kwh:'',value:''})),appliances:[]});
 
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = n => (Number(n) || 0).toFixed(2).replace('.', ',');
-const parseNum = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
+let settings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem('pl_settings')||'{}')};
+let client={...EMPTY_CLIENT(),...JSON.parse(localStorage.getItem('pl_client')||'{}')};
+let billImages=[];
 
-function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
-function load(){
-  const s = localStorage.getItem(KEY);
-  if (s) state = Object.assign(state, JSON.parse(s));
-}
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>{const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?0:n;};
+const fmt=(n,d=2)=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const saveSettings=()=>localStorage.setItem('pl_settings',JSON.stringify(settings));
+const saveClient=()=>localStorage.setItem('pl_client',JSON.stringify(client));
 
-function applyColors(){
-  document.documentElement.style.setProperty('--primary', state.settings.primary);
-  document.documentElement.style.setProperty('--highlight', state.settings.highlight);
-  $('headerTitle').textContent = state.settings.company;
-}
-
-function fillForms(){
-  const s = state.settings, c = state.client;
-  $('company').value = s.company; $('slogan').value = s.slogan;
-  $('primary').value = s.primary; $('highlight').value = s.highlight;
-  $('logoPreview').src = s.logo || '';
-  $('cName').value = c.name; $('cAddr').value = c.address; $('cTariff').value = c.tariff;
-}
-
-function saveSettings(){
-  state.settings.company = $('company').value;
-  state.settings.slogan = $('slogan').value;
-  state.settings.primary = $('primary').value;
-  state.settings.highlight = $('highlight').value;
-  save(); applyColors();
-  alert('Configurações salvas.');
-}
-
-function saveClient(){
-  state.client = {name:$('cName').value, address:$('cAddr').value, tariff:parseFloat($('cTariff').value) || 0};
-  save(); calcAll();
-}
-
-$('logoFile').addEventListener('change', e => {
-  const f = e.target.files[0]; if (!f) return;
-  const img = new Image();
-  img.onload = () => {
-    const r = Math.min(1, 400 / img.width);
-    const c = document.createElement('canvas');
-    c.width = img.width * r; c.height = img.height * r;
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    state.settings.logo = c.toDataURL('image/png');
-    $('logoPreview').src = state.settings.logo;
-    save();
-  };
-  img.src = URL.createObjectURL(f);
-});
-
-/* ---------- Leitura da conta ---------- */
-
-function extractHistory(text){
-  const rows = [], seen = new Set();
-  const re = /(?<![\d\/])(\d{2}\/\d{4}|\d{2}\/\d{2}|[A-Za-zçÇ]{3}\/\d{2,4})(?![\d\/])[^\d]{0,25}?(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)(?!\d)/g;
-  let m;
-  while ((m = re.exec(text))) {
-    const kwh = parseNum(m[2]);
-    const key = m[1] + '|' + kwh;
-    if (kwh > 0 && kwh < 100000 && !seen.has(key)) {
-      seen.add(key);
-      rows.push({month: m[1], kwh: kwh, value: ''});
-    }
+// Consumo mensal de um aparelho (kWh/mês)
+function applianceKwh(a){
+  const days=num(a.days)||30, hours=num(a.hours), qty=num(a.qty)||1;
+  if(a.type==='ac'){
+    const watts=num(a.btu)*0.293;
+    return ((watts*hours*days)/1000)*0.3*qty;
   }
-  if (rows.length === 0) {
-    const re2 = /(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)\s*kWh/gi;
-    while ((m = re2.exec(text))) rows.push({month: '', kwh: parseNum(m[1]), value: ''});
-  }
-  return rows;
+  return (num(a.watts)*hours*days*qty)/1000;
 }
 
-async function readPdf(file){
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
-  let text = '';
-  billPages = [];
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    text += content.items.map(i => i.str).join(' ') + '\n';
-    if (p <= 3) {
-      const vp = page.getViewport({scale: 1.5});
-      const canvas = document.createElement('canvas');
-      canvas.width = vp.width; canvas.height = vp.height;
-      await page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
-      billPages.push(canvas.toDataURL('image/jpeg', 0.8));
-    }
-  }
-  const found = extractHistory(text);
-  if (found.length) {
-    state.history = found;
-    save(); renderHistory(); calcAll();
-    $('billStatus').textContent = 'Conta lida: ' + found.length + ' valor(es) de kWh encontrado(s). Confira a tabela abaixo.';
-  } else {
-    $('billStatus').textContent = 'Não consegui identificar o histórico nesta conta. Preencha a tabela manualmente. As páginas serão anexadas ao relatório.';
-  }
+// Resumo: média da conta + consumo dos aparelhos
+function summary(){
+  const tariff=num(client.tariff);
+  const hs=client.history.map(h=>({kwh:num(h.kwh),value:num(h.value)}));
+  const withKwh=hs.filter(h=>h.kwh>0);
+  const months=withKwh.length;
+  const avgKwh=months?withKwh.reduce((s,h)=>s+h.kwh,0)/months:0;
+  const withVal=hs.filter(h=>h.value>0);
+  const avgValue=withVal.length?withVal.reduce((s,h)=>s+h.value,0)/withVal.length:avgKwh*tariff;
+  const appKwh=client.appliances.reduce((s,a)=>s+applianceKwh(a),0);
+  const appValue=appKwh*tariff;
+  return {tariff,months,avgKwh,avgValue,appKwh,appValue,projKwh:avgKwh+appKwh,projValue:avgValue+appValue};
 }
 
-function readImage(file){
-  return new Promise(resolve => {
-    const r = new FileReader();
-    r.onload = () => {
-      billPages = [r.result];
-      $('billStatus').textContent = 'Imagem anexada. Imagens não têm leitura automática: preencha o histórico manualmente.';
-      resolve();
-    };
-    r.readAsDataURL(file);
-  });
-}
-
-$('billFile').addEventListener('change', async e => {
-  const f = e.target.files[0]; if (!f) return;
-  $('billStatus').textContent = 'Lendo a conta...';
-  try {
-    if (f.type === 'application/pdf') await readPdf(f); else await readImage(f);
-  } catch (err) {
-    $('billStatus').textContent = 'Não consegui ler o arquivo: ' + err.message;
-  }
-});
-
-/* ---------- Histórico ---------- */
-
-function getAvg(){
-  const valid = state.history.filter(r => r.kwh > 0);
-  return valid.length ? valid.reduce((s, r) => s + r.kwh, 0) / valid.length : 0;
+function applySettings(){
+  document.documentElement.style.setProperty('--primary',settings.primary);
+  document.documentElement.style.setProperty('--highlight',settings.highlight);
+  $('hdrName').textContent=settings.company;
+  $('hdrSlogan').textContent=settings.slogan;
+  $('hdrLogo').src=settings.logo||'';
+  $('hdrLogo').style.display=settings.logo?'block':'none';
 }
 
 function renderHistory(){
-  $('histBody').innerHTML = state.history.map((r, i) => `
-    <tr>
-      <td><input value="${esc(r.month)}" onchange="updH(${i},'month',this.value)"></td>
-      <td><input type="number" step="0.01" value="${r.kwh}" onchange="updH(${i},'kwh',parseFloat(this.value)||0)"></td>
-      <td><input value="${esc(r.value)}" onchange="updH(${i},'value',this.value)"></td>
-      <td><button class="danger" onclick="delH(${i})">X</button></td>
-    </tr>`).join('');
-  const n = state.history.filter(r => r.kwh > 0).length;
-  $('avgBox').textContent = n ? `Média de ${n} mês(es): ${fmt(getAvg())} kWh/mês` : 'Sem histórico ainda.';
-}
-
-function updH(i, k, v){ state.history[i][k] = v; save(); renderHistory(); calcAll(); }
-function delH(i){ state.history.splice(i, 1); save(); renderHistory(); calcAll(); }
-function addHist(){ state.history.push({month:'', kwh:0, value:''}); save(); renderHistory(); }
-
-$('csvFile').addEventListener('change', e => {
-  const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = () => {
-    const rows = [];
-    r.result.split(/\r?\n/).forEach(line => {
-      if (!line.trim()) return;
-      const cols = line.split(line.includes(';') ? ';' : ',');
-      const kwh = parseNum(cols[1]);
-      if (!isNaN(kwh)) rows.push({month: (cols[0] || '').trim(), kwh: kwh, value: (cols[2] || '').trim()});
-    });
-    state.history = state.history.concat(rows);
-    save(); renderHistory(); calcAll();
-  };
-  r.readAsText(f);
-});
-
-/* ---------- Aparelhos ---------- */
-
-function addAppliance(type){
-  state.appliances.push({name:'', type:type, value:0, hours:0, days:30, qty:1});
-  save(); renderAppliances(); calcAll();
-}
-
-function updA(i, k, v){ state.appliances[i][k] = v; save(); renderAppliances(); calcAll(); }
-function delA(i){ state.appliances.splice(i, 1); save(); renderAppliances(); calcAll(); }
-
-function calcAppliance(a){
-  if (a.type === 'ar') {
-    const watts = a.value * 0.293;
-        return (watts * a.hours * 30 * a.qty) / 1000;
-  }
-  return (a.value * a.hours * a.days * a.qty) / 1000;
+  $('history').innerHTML=client.history.map((h,i)=>`<tr>
+    <td><input data-h="${i}" data-f="month" value="${esc(h.month)}" placeholder="JUN/25"></td>
+    <td><input data-h="${i}" data-f="kwh" type="number" inputmode="decimal" value="${esc(h.kwh)}"></td>
+    <td><input data-h="${i}" data-f="value" type="number" inputmode="decimal" step="0.01" value="${esc(h.value)}"></td>
+  </tr>`).join('');
 }
 
 function renderAppliances(){
-  $('appList').innerHTML = state.appliances.map((a, i) => `
-    <div class="card">
-      <div class="grid">
-        <div><label>Nome</label><input value="${esc(a.name)}" onchange="updA(${i},'name',this.value)"></div>
-        <div><label>Tipo</label>
-          <select onchange="updA(${i},'type',this.value)">
-            <option value="normal" ${a.type==='normal'?'selected':''}>Normal (W)</option>
-            <option value="ar" ${a.type==='ar'?'selected':''}>Ar-condicionado (BTU)</option>
-          </select></div>
-        <div><label>${a.type==='ar'?'BTU':'Potência (W)'}</label><input type="number" value="${a.value}" onchange="updA(${i},'value',parseFloat(this.value)||0)"></div>
-        <div><label>Horas por dia</label><input type="number" step="0.5" value="${a.hours}" onchange="updA(${i},'hours',parseFloat(this.value)||0)"></div>
-        <div><label>Dias por mês</label><input type="number" value="${a.days}" ${a.type==='ar'?'disabled':''} onchange="updA(${i},'days',parseFloat(this.value)||0)"></div>
-        <div><label>Quantidade</label><input type="number" min="1" value="${a.qty}" onchange="updA(${i},'qty',parseFloat(this.value)||1)"></div>
+  $('appliances').innerHTML=client.appliances.map((a,i)=>{
+    const isAc=a.type==='ac';
+    const f=isAc?'btu':'watts';
+    return `<div class="item">
+      <label>Nome</label>
+      <input data-a="${i}" data-f="name" value="${esc(a.name)}">
+      <div class="row">
+        <div><label>${isAc?'BTU':'Potência (W)'}</label><input type="number" inputmode="decimal" data-a="${i}" data-f="${f}" value="${esc(a[f])}"></div>
+        <div><label>Horas/dia</label><input type="number" step="0.5" inputmode="decimal" data-a="${i}" data-f="hours" value="${esc(a.hours)}"></div>
+        <div><label>Dias/mês</label><input type="number" inputmode="numeric" data-a="${i}" data-f="days" value="${esc(a.days)}"></div>
+        <div><label>Quantidade</label><input type="number" inputmode="numeric" data-a="${i}" data-f="qty" value="${esc(a.qty)}"></div>
       </div>
-      <button class="danger" onclick="delA(${i})">Remover</button>
-    </div>`).join('');
+      <p class="result">Consumo: <b id="ak${i}">${fmt(applianceKwh(a))}</b> kWh/mês</p>
+      <button class="danger" data-rm="${i}">Remover</button>
+    </div>`;
+  }).join('');
 }
 
-/* ---------- Cálculo ---------- */
-
-function calcAll(){
-  const tariff = state.client.tariff || 0;
-  const apps = state.appliances.map(a => ({...a, kwh: calcAppliance(a)}));
-  const total = apps.reduce((s, a) => s + a.kwh, 0);
-  const avg = getAvg();
-  const factor = 0;
-
-
-  $('appResults').innerHTML = apps.map(a => `
-    <tr><td>${esc(a.name) || '-'}</td><td>${fmt(a.kwh)}</td><td>${factor ? fmt(a.kwh * factor) : '-'}</td></tr>`).join('');
-
-  $('summary').innerHTML = `
-    <b>Consumo estimado:</b> ${fmt(total)} kWh/mês (R$ ${fmt(total * tariff)})<br>
-    <b>Consumo real médio da conta:</b> ${fmt(avg)} kWh/mês (R$ ${fmt(avg * tariff)})<br>
-    <b>Fator de ajuste:</b> ${factor ? factor.toFixed(3).replace('.', ',') : '-'}`;
-
-  return {apps, total, avg, factor, tariff};
-}
-
-/* ---------- PDF ---------- */
-
-function gerarPDF(){
-  const d = calcAll();
-  const s = state.settings, c = state.client;
-  const appRows = d.apps.map(a => `
-    <tr><td>${esc(a.name)}</td><td>${a.type==='ar' ? a.value+' BTU' : a.value+' W'}</td><td>${a.hours} h/dia</td><td>${a.qty}</td><td>${fmt(a.kwh)}</td><td>${d.factor ? fmt(a.kwh*d.factor) : '-'}</td></tr>`).join('');
-  const histRows = state.history.map(r => `
-    <tr><td>${esc(r.month)}</td><td>${fmt(r.kwh)}</td><td>${esc(r.value)}</td></tr>`).join('');
-  const bills = billPages.map(src => `<div style="page-break-before:always"><img src="${src}" style="width:100%"></div>`).join('');
-
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório - ${esc(c.name)}</title>
-  <style>
-    body{font-family:Arial,sans-serif;margin:20px;color:#222;}
-    h2{color:${s.primary};font-size:16px;margin-top:20px;}
-    .head{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid ${s.highlight};padding-bottom:8px;}
-    .logo{max-height:70px;}
-    table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;}
-    td,th{border:1px solid #ccc;padding:5px;text-align:left;}
-    th{background:${s.primary};color:#fff;}
-    .box{background:#eef3e4;padding:10px;border-left:5px solid ${s.highlight};font-size:13px;}
-  </style></head><body>
-    <div class="head">
-      <div><h1 style="color:${s.primary};margin:0">${esc(s.company)}</h1><div>${esc(s.slogan)}</div></div>
-      ${s.logo ? `<img class="logo" src="${s.logo}">` : ''}
-    </div>
-    <h2>Cliente</h2>
-    <div>${esc(c.name)}<br>${esc(c.address)}<br>Tarifa: R$ ${fmt(c.tariff)}/kWh</div>
-    <h2>Resumo</h2>
-    <div class="box">
-      Consumo real médio: <b>${fmt(d.avg)} kWh/mês</b> (R$ ${fmt(d.avg*d.tariff)})<br>
-      Consumo estimado pelos aparelhos: <b>${fmt(d.total)} kWh/mês</b> (R$ ${fmt(d.total*d.tariff)})<br>
-      Fator de ajuste: ${d.factor ? d.factor.toFixed(3).replace('.',',') : '-'}
-    </div>
-    <h2>Aparelhos</h2>
-    <table><thead><tr><th>Aparelho</th><th>Potência</th><th>Uso</th><th>Qtd</th><th>kWh/mês</th><th>kWh ajustado</th></tr></thead><tbody>${appRows}</tbody></table>
-    <h2>Histórico de consumo</h2>
-    <table><thead><tr><th>Mês</th><th>kWh</th><th>Valor (R$)</th></tr></thead><tbody>${histRows}</tbody></table>
-    ${bills}
-  </body></html>`;
-
-  const w = window.open('', '_blank');
-  if (!w) { alert('Permita pop-ups para gerar o PDF.'); return; }
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => w.print(), 800);
-}
-
-/* ---------- Novo cliente ---------- */
-
-function novoCliente(){
-  if (!confirm('Limpar os dados do cliente atual?')) return;
-  state.client = {name:'', address:'', tariff:0.90};
-  state.history = [];
-  state.appliances = [];
-  billPages = [];
-  $('billStatus').textContent = '';
-  save(); fillForms(); renderHistory(); renderAppliances(); calcAll();
-}
-
-/* ---------- Inicialização ---------- */
-
-load();
-fillForms();
-applyColors();
-renderHistory();
-renderAppliances();
-calcAll();
-</script>
-</body>
-</html>
+function renderResults(){
+  const s=summary();
+  $('results').innerHTML=`
+    Meses com histórico: <b>${s.months}</b> (de 12)<br>
+    Média de consumo da conta: <b>${fmt(s.avgKwh,1)} kWh/mês</b><br>
+    Média da conta: <b>R$ ${fmt(s.avgValue)}/mês</b><br>
+    Consumo dos aparelhos: <b>${fmt(s.appKwh,1)} kWh/mês</b> (R$ ${fmt(s.app
