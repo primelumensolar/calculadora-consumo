@@ -64,10 +64,6 @@ td input{padding:6px;font-size:14px}
   <h2>Cliente</h2>
   <label>Nome do cliente</label>
   <input id="c_name" type="text">
-  <label>Endereço</label>
-  <input id="c_address" type="text">
-  <label>Tarifa (R$ por kWh)</label>
-  <input id="c_tariff" type="number" step="0.01" inputmode="decimal">
   <button id="newClient" class="danger">Novo cliente (limpar dados)</button>
 </section>
 
@@ -84,12 +80,17 @@ td input{padding:6px;font-size:14px}
 </section>
 
 <section>
-  <h2>Aparelhos</h2>
-  <div class="row">
-    <button id="addApp" class="sec">+ Aparelho</button>
-    <button id="addAc" class="sec">+ Ar-condicionado</button>
-  </div>
+  <h2>Ar-condicionado</h2>
+  <button id="addAc" class="sec">+ Ar-condicionado</button>
   <div id="appList"></div>
+  <p class="small">A estimativa de uso é considerada internamente no cálculo e não aparece no relatório do cliente.</p>
+</section>
+
+<section>
+  <h2>Demais consumos</h2>
+  <p class="small">Adicione outros itens informando diretamente o consumo mensal conhecido em kWh/mês.</p>
+  <button id="addOther" class="sec">+ Adicionar consumo</button>
+  <div id="otherList"></div>
 </section>
 
 <section>
@@ -117,14 +118,21 @@ if (window.pdfjsLib) {
 const KEY = 'primeLumenApp';
 const DEFAULT_SETTINGS = {company:'Prime Lumen', slogan:'Tecnologia Solar', logo:'', primary:'#2f4a1c', accent:'#b8b52a'};
 let settings = {...DEFAULT_SETTINGS};
-let client = {name:'', address:'', tariff:0.9, history:[], appliances:[]};
+let client = {name:'', history:[], appliances:[], otherConsumptions:[]};
 let billImages = [];
 
 function save(){ localStorage.setItem(KEY, JSON.stringify({settings, client})); }
 function load(){
   try{
     const d = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (d){ settings = {...DEFAULT_SETTINGS, ...d.settings}; client = {...client, ...d.client}; }
+    if (d){
+      settings = {...DEFAULT_SETTINGS, ...d.settings};
+      client = {...client, ...d.client};
+      // Migra os dados antigos: mantém apenas ar-condicionado e cria a lista de consumos adicionais.
+      client.appliances = (client.appliances || []).filter(a => a.type === 'ac');
+      client.appliances.forEach(a => { if (a.hours === '' || a.hours == null) a.hours = 4; });
+      client.otherConsumptions = client.otherConsumptions || [];
+    }
   }catch(e){}
 }
 
@@ -148,10 +156,11 @@ function applianceKwh(a){
 function summary(){
   const vals = client.history.map(h => num(h.kwh)).filter(v => v > 0);
   const avgKwh = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : 0;
-  const appKwh = client.appliances.reduce((s,a) => s + applianceKwh(a), 0);
-  const t = num(client.tariff);
+  const acKwh = client.appliances.reduce((s,a) => s + applianceKwh(a), 0);
+  const otherKwh = (client.otherConsumptions || []).reduce((s,item) => s + num(item.kwh), 0);
+  const appKwh = acKwh + otherKwh;
   const projKwh = avgKwh + appKwh;
-  return {months: vals.length, tariff: t, avgKwh, avgValue: avgKwh*t, appKwh, appValue: appKwh*t, projKwh, projValue: projKwh*t};
+  return {months: vals.length, avgKwh, acKwh, otherKwh, appKwh, projKwh};
 }
 
 function applySettings(){
@@ -175,8 +184,6 @@ function renderSettings(){
 
 function renderClient(){
   $('c_name').value = client.name;
-  $('c_address').value = client.address;
-  $('c_tariff').value = client.tariff;
 }
 
 function renderHistory(){
@@ -195,44 +202,52 @@ function field(label, i, f, val, type='text'){
 }
 
 function renderApps(){
-  $('appList').innerHTML = client.appliances.map((a, i) => {
-    const isAc = a.type === 'ac';
-    const head = isAc ? 'Ar-condicionado' : 'Aparelho';
-    const extraField = isAc
-      ? field('Potência (BTU)', i, 'btu', a.btu, 'number')
-      : field('Potência (W)', i, 'watts', a.watts, 'number');
-    return `
-      <div class="item">
-        <button class="del" data-del="${i}">Remover</button>
-        <b>${head} ${i+1}</b>
-        <div class="row">
-          ${field('Nome', i, 'name', a.name)}
-          ${extraField}
-          ${field('Quantidade', i, 'qty', a.qty, 'number')}
-          ${field('Horas por dia', i, 'hours', a.hours, 'number')}
-          ${field('Dias por mês', i, 'days', a.days, 'number')}
-        </div>
-      </div>`;
-  }).join('') || '<p class="small">Nenhum aparelho cadastrado.</p>';
+  $('appList').innerHTML = client.appliances.map((a, i) => `
+    <div class="item">
+      <button class="del" data-del="${i}">Remover</button>
+      <b>Ar-condicionado ${i+1}</b>
+      <div class="row">
+        ${field('Nome', i, 'name', a.name || 'Ar-condicionado')}
+        ${field('Potência (BTU)', i, 'btu', a.btu, 'number')}
+        ${field('Quantidade', i, 'qty', a.qty, 'number')}
+        ${field('Horas por dia (uso interno)', i, 'hours', a.hours, 'number')}
+        ${field('Dias por mês', i, 'days', a.days, 'number')}
+      </div>
+    </div>`).join('') || '<p class="small">Nenhum ar-condicionado cadastrado.</p>';
 }
+
+function renderOtherConsumptions(){
+  $('otherList').innerHTML = (client.otherConsumptions || []).map((item, i) => `
+    <div class="item">
+      <button class="del" data-other-del="${i}">Remover</button>
+      <b>Consumo adicional ${i+1}</b>
+      <div class="row">
+        <div><label>Item</label><input data-oi="${i}" data-of="name" value="${esc(item.name)}" placeholder="Ex.: Carro elétrico"></div>
+        <div><label>Consumo (kWh/mês)</label><input type="number" min="0" step="0.1" inputmode="decimal" data-oi="${i}" data-of="kwh" value="${esc(item.kwh)}" placeholder="Ex.: 250"></div>
+      </div>
+    </div>`).join('') || '<p class="small">Nenhum consumo adicional cadastrado.</p>';
+}
+
 
 function updateResult(){
   const s = summary();
   $('resultBox').innerHTML = `
     <table>
-      <tr><th>Item</th><th>kWh/mês</th><th>R$/mês</th></tr>
-      <tr><td>Média da conta (${s.months} meses lidos)</td><td>${fmt(s.avgKwh,1)}</td><td>${fmt(s.avgValue)}</td></tr>
-      <tr><td>Consumo dos aparelhos</td><td>${fmt(s.appKwh,1)}</td><td>${fmt(s.appValue)}</td></tr>
-      <tr><td class="total">Projeção total</td><td class="total">${fmt(s.projKwh,1)}</td><td class="total">${fmt(s.projValue)}</td></tr>
-    </table>
-    <p class="small">Tarifa usada: R$ ${fmt(s.tariff)}/kWh</p>`;
+      <tr><th>Item</th><th>kWh/mês</th></tr>
+      <tr><td>Média da conta (${s.months} meses lidos)</td><td>${fmt(s.avgKwh,1)}</td></tr>
+      <tr><td>Ar-condicionado</td><td>${fmt(s.acKwh,1)}</td></tr>
+      <tr><td>Demais consumos</td><td>${fmt(s.otherKwh,1)}</td></tr>
+      <tr><td class="total">Projeção total</td><td class="total">${fmt(s.projKwh,1)}</td></tr>
+    </table>`;
 }
+
 
 function renderAll(){
   renderSettings();
   renderClient();
   renderHistory();
   renderApps();
+  renderOtherConsumptions();
   updateResult();
 }
 
@@ -389,8 +404,7 @@ async function gerarPDF(){
   const hoje = new Date().toLocaleDateString('pt-BR');
   [
     `Cliente: ${client.name || '-'}`,
-    `Endereço: ${client.address || '-'}`,
-    `Data: ${hoje}     Tarifa: R$ ${fmt(s.tariff)}/kWh`
+    `Data: ${hoje}`
   ].forEach(linha => {
     ensure(6);
     doc.text(linha, M, y);
@@ -401,47 +415,45 @@ async function gerarPDF(){
   // Resumo
   sectionTitle('Resumo');
   drawTable(
-    ['Item', 'kWh/mês', 'R$/mês'],
+    ['Item', 'kWh/mês'],
     [
-      {cells: [`Média da conta (${s.months} meses)`, fmt(s.avgKwh, 1), fmt(s.avgValue)]},
-      {cells: ['Consumo dos aparelhos', fmt(s.appKwh, 1), fmt(s.appValue)]},
-      {cells: ['Projeção total', fmt(s.projKwh, 1), fmt(s.projValue)], bold: true}
+      {cells: [`Média da conta (${s.months} meses)`, fmt(s.avgKwh, 1)]},
+      {cells: ['Ar-condicionado', fmt(s.acKwh, 1)]},
+      {cells: ['Demais consumos', fmt(s.otherKwh, 1)]},
+      {cells: ['Projeção total', fmt(s.projKwh, 1)], bold: true}
     ],
-    [CW - 60, 30, 30]
+    [CW - 35, 35]
   );
 
-  // Aparelhos
-  sectionTitle('Aparelhos');
-  const appRows = client.appliances.length
+  // Ar-condicionado: as horas de uso não são exibidas no relatório do cliente.
+  sectionTitle('Ar-condicionado');
+  const acRows = client.appliances.length
     ? client.appliances.map(a => ({
         cells: [
-          (a.name || '-') + (a.type === 'ac' ? ` (${fmt(num(a.btu), 0)} BTU)` : ''),
+          (a.name || 'Ar-condicionado') + ` (${fmt(num(a.btu), 0)} BTU)`,
           num(a.qty) || 1,
-          `${num(a.hours)} h/dia`,
           fmt(applianceKwh(a), 1)
         ]
       }))
-    : [{cells: ['Nenhum aparelho cadastrado', '', '', '']}];
+    : [{cells: ['Nenhum ar-condicionado cadastrado', '', '']}];
   drawTable(
-    ['Aparelho', 'Qtd', 'Uso', 'kWh/mês'],
-    appRows,
-    [CW - 75, 20, 25, 30]
+    ['Ar-condicionado', 'Qtd', 'kWh/mês'],
+    acRows,
+    [CW - 55, 20, 35]
   );
 
-  // Contas anexadas
-  for (const src of billImages){
-    const img = await loadImage(src);
-    if (!img) continue;
-    if (y > M + 10) { doc.addPage(); y = M; }
-    let w = CW;
-    let h = w * img.naturalHeight / img.naturalWidth;
-    if (h > 250){
-      h = 250;
-      w = h * img.naturalWidth / img.naturalHeight;
-    }
-    doc.addImage(src, 'JPEG', M + (CW - w) / 2, y, w, h);
-    y += h + 6;
-  }
+  // Demais consumos informados manualmente.
+  sectionTitle('Demais consumos');
+  const otherRows = (client.otherConsumptions || []).length
+    ? client.otherConsumptions.map(item => ({
+        cells: [item.name || 'Item não informado', fmt(num(item.kwh), 1)]
+      }))
+    : [{cells: ['Nenhum consumo adicional cadastrado', '']}];
+  drawTable(
+    ['Item', 'kWh/mês'],
+    otherRows,
+    [CW - 35, 35]
+  );
 
   // Rodapé em todas as páginas
   const total = doc.getNumberOfPages();
@@ -529,7 +541,7 @@ $('s_logo').addEventListener('change', async e => {
   applySettings();
 });
 
-[['c_name','name'], ['c_address','address'], ['c_tariff','tariff']].forEach(([id, key]) => {
+[['c_name','name']].forEach(([id, key]) => {
   $(id).addEventListener('input', e => {
     client[key] = e.target.value;
     save();
@@ -539,7 +551,7 @@ $('s_logo').addEventListener('change', async e => {
 
 $('newClient').addEventListener('click', () => {
   if (!confirm('Limpar os dados do cliente atual?')) return;
-  client = {name:'', address:'', tariff:0.9, history:[], appliances:[]};
+  client = {name:'', history:[], appliances:[], otherConsumptions:[]};
   billImages = [];
   $('billFile').value = '';
   save();
@@ -610,17 +622,34 @@ $('histBody').addEventListener('click', e => {
   updateResult();
 });
 
-$('addApp').addEventListener('click', () => {
-  client.appliances.push({type:'normal', name:'', watts:'', qty:1, hours:'', days:30});
+$('addAc').addEventListener('click', () => {
+  client.appliances.push({type:'ac', name:'Ar-condicionado', btu:'', qty:1, hours:4, days:30});
   save();
   renderApps();
   updateResult();
 });
 
-$('addAc').addEventListener('click', () => {
-  client.appliances.push({type:'ac', name:'Ar-condicionado', btu:'', qty:1, hours:'', days:30});
+$('addOther').addEventListener('click', () => {
+  client.otherConsumptions.push({name:'', kwh:''});
   save();
-  renderApps();
+  renderOtherConsumptions();
+  updateResult();
+});
+
+$('otherList').addEventListener('input', e => {
+  const i = e.target.dataset.oi;
+  if (i === undefined) return;
+  client.otherConsumptions[i][e.target.dataset.of] = e.target.value;
+  save();
+  updateResult();
+});
+
+$('otherList').addEventListener('click', e => {
+  const i = e.target.dataset.otherDel;
+  if (i === undefined) return;
+  client.otherConsumptions.splice(Number(i), 1);
+  save();
+  renderOtherConsumptions();
   updateResult();
 });
 
