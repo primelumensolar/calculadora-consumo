@@ -22,6 +22,7 @@ input{width:100%;padding:10px;font-size:16px;border:1px solid #ccc;border-radius
 input[type=color]{height:44px;padding:4px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 button{background:var(--primary);color:#fff;border:0;border-radius:8px;padding:12px;font-size:16px;width:100%;margin-top:8px;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
 button.sec{background:#e6e8dc;color:var(--primary)}
 button.danger{background:#a33}
 button.del{position:absolute;right:8px;top:8px;width:auto;padding:4px 8px;font-size:12px;margin:0;background:#a33}
@@ -31,16 +32,20 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
 th,td{border-bottom:1px solid #ddd;padding:6px;text-align:left}
 td input{padding:6px;font-size:14px}
 .total{font-weight:bold;color:var(--primary)}
-#print-area{display:none}
-.rep-head{display:flex;align-items:center;gap:12px;border-bottom:3px solid var(--primary);padding-bottom:8px}
-.rep-head img{height:60px;object-fit:contain}
-.rep-head h1{margin:0;color:var(--primary);font-size:22px}
-.rep-head p{margin:0;color:var(--accent);font-weight:bold}
-#print-area h2{color:var(--primary);font-size:18px}
-#print-area h3{color:var(--primary);font-size:15px;margin:14px 0 4px}
-#print-area th{background:var(--primary);color:#fff}
-#print-area .bill{width:100%;margin-top:10px;border:1px solid #ccc}
-.foot{margin-top:20px;font-size:11px;color:#666;text-align:center;border-top:2px solid var(--accent);padding-top:6px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns button{margin-top:0}
+/* Estilo do relatório em PDF */
+.report{font-family:system-ui,Arial,sans-serif;color:#222;background:#fff;width:794px;padding:10px}
+.report .rep-head{display:flex;align-items:center;gap:12px;border-bottom:3px solid var(--primary);padding-bottom:8px}
+.report .rep-head img{height:60px;max-width:180px;object-fit:contain}
+.report .rep-head h1{margin:0;color:var(--primary);font-size:22px}
+.report .rep-head p{margin:0;color:var(--accent);font-weight:bold}
+.report h2{color:var(--primary);font-size:18px;margin:14px 0 6px}
+.report h3{color:var(--primary);font-size:15px;margin:14px 0 4px}
+.report table th{background:var(--primary);color:#fff}
+.report table td{font-size:13px}
+.report .bill{width:100%;margin-top:10px;border:1px solid #ccc}
+.report .foot{margin-top:20px;font-size:11px;color:#666;text-align:center;border-top:2px solid var(--accent);padding-top:6px}
 </style>
 </head>
 <body>
@@ -105,14 +110,15 @@ td input{padding:6px;font-size:14px}
 </section>
 
 <section>
-  <h2>Relatório</h2>
-  <button id="pdfBtn">Gerar PDF e compartilhar</button>
-  <p class="small">No celular abre o menu de compartilhamento. No computador o PDF é baixado.</p>
+  <h2>Relatório em PDF</h2>
+  <div class="btns">
+    <button id="btnBaixar">Baixar PDF</button>
+    <button id="btnCompartilhar" class="sec">Compartilhar PDF</button>
+  </div>
+  <p class="small">No celular, use Compartilhar para enviar ao cliente pelo WhatsApp, e-mail etc. No computador, use Baixar PDF.</p>
 </section>
 
 </main>
-
-<div id="print-area"></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -274,7 +280,17 @@ function parseHistory(text){
   return out;
 }
 
-async function gerarPDF(){
+/* ===== Geração e entrega do PDF ===== */
+
+function isMobileDevice(){
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.innerWidth < 820);
+}
+
+function nomeArquivo(){
+  return `Relatorio_${(client.name || 'cliente').replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`;
+}
+
+function reportHTML(){
   const s = summary();
   const hoje = new Date().toLocaleDateString('pt-BR');
   const logo = settings.logo ? `<img src="${settings.logo}">` : '';
@@ -282,58 +298,94 @@ async function gerarPDF(){
     ? client.appliances.map(a => `<tr><td>${esc(a.name) || '-'}${a.type === 'ac' ? ` (${fmt(num(a.btu),0)} BTU)` : ''}</td><td>${num(a.qty) || 1}</td><td>${num(a.hours)} h/dia</td><td>${fmt(applianceKwh(a),1)}</td></tr>`).join('')
     : '<tr><td colspan="4">Nenhum aparelho</td></tr>';
   const imgs = billImages.map(src => `<img class="bill" src="${src}">`).join('');
+  return `
+    <div class="report">
+      <div class="rep-head">${logo}<div><h1>${esc(settings.company)}</h1><p>${esc(settings.slogan)}</p></div></div>
+      <h2>Relatório de Consumo de Energia</h2>
+      <p>Cliente: <b>${esc(client.name)}</b><br>Endereço: ${esc(client.address)}<br>Data: ${hoje} &nbsp; Tarifa: R$ ${fmt(s.tariff)}/kWh</p>
+      <h3>Resumo</h3>
+      <table>
+        <tr><th>Item</th><th>kWh/mês</th><th>R$/mês</th></tr>
+        <tr><td>Média da conta (${s.months} meses)</td><td>${fmt(s.avgKwh,1)}</td><td>${fmt(s.avgValue)}</td></tr>
+        <tr><td>Consumo dos aparelhos</td><td>${fmt(s.appKwh,1)}</td><td>${fmt(s.appValue)}</td></tr>
+        <tr><td><b>Projeção total</b></td><td><b>${fmt(s.projKwh,1)}</b></td><td><b>${fmt(s.projValue)}</b></td></tr>
+      </table>
+      <h3>Aparelhos</h3>
+      <table><tr><th>Aparelho</th><th>Qtd</th><th>Uso</th><th>kWh/mês</th></tr>${apps}</table>
+      ${imgs}
+      <div class="foot">${esc(settings.company)} - ${esc(settings.slogan)}</div>
+    </div>`;
+}
 
-  const area = $('print-area');
-  area.innerHTML = `
-    <div class="rep-head">${logo}<div><h1>${esc(settings.company)}</h1><p>${esc(settings.slogan)}</p></div></div>
-    <h2>Relatório de Consumo de Energia</h2>
-    <p>Cliente: <b>${esc(client.name)}</b><br>Endereço: ${esc(client.address)}<br>Data: ${hoje} &nbsp; Tarifa: R$ ${fmt(s.tariff)}/kWh</p>
-    <h3>Resumo</h3>
-    <table>
-      <tr><th>Item</th><th>kWh/mês</th><th>R$/mês</th></tr>
-      <tr><td>Média da conta (${s.months} meses)</td><td>${fmt(s.avgKwh,1)}</td><td>${fmt(s.avgValue)}</td></tr>
-      <tr><td>Consumo dos aparelhos</td><td>${fmt(s.appKwh,1)}</td><td>${fmt(s.appValue)}</td></tr>
-      <tr><td><b>Projeção total</b></td><td><b>${fmt(s.projKwh,1)}</b></td><td><b>${fmt(s.projValue)}</b></td></tr>
-    </table>
-    <h3>Aparelhos</h3>
-    <table><tr><th>Aparelho</th><th>Qtd</th><th>Uso</th><th>kWh/mês</th></tr>${apps}</table>
-    ${imgs}
-    <div class="foot">${esc(settings.company)} - ${esc(settings.slogan)}</div>`;
-
-  const prevStyle = area.style.cssText;
-  area.style.display = 'block';
-  area.style.position = 'absolute';
-  area.style.left = '-10000px';
-  area.style.top = '0';
-  area.style.width = '794px';
-  area.style.background = '#fff';
-
-  const nome = `Relatorio_${(client.name || 'cliente').replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`;
+async function buildPdf(){
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;top:0;left:0;width:794px;background:#fff;z-index:99999;';
+  wrap.innerHTML = reportHTML();
+  document.body.appendChild(wrap);
   try{
-    const blob = await html2pdf().set({
+    const imgs = [...wrap.querySelectorAll('img')];
+    await Promise.all(imgs.map(img => (img.complete && img.naturalWidth) ? null : new Promise(r => { img.onload = r; img.onerror = r; })));
+    await new Promise(r => setTimeout(r, 300));
+    return await html2pdf().set({
       margin: 10,
-      filename: nome,
-      image: {type: 'jpeg', quality: 0.95},
-      html2canvas: {scale: 2, useCORS: true},
+      filename: nomeArquivo(),
+      image: {type: 'jpeg', quality: 0.92},
+      html2canvas: {scale: isMobileDevice() ? 1 : 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 794, scrollX: 0, scrollY: 0},
       jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'},
       pagebreak: {mode: ['css', 'legacy']}
-    }).from(area).outputPdf('blob');
+    }).from(wrap).outputPdf('blob');
+  } finally {
+    wrap.remove();
+  }
+}
 
-    const file = new File([blob], nome, {type: 'application/pdf'});
+function downloadBlob(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function setBusy(on, text){
+  for (const id of ['btnBaixar', 'btnCompartilhar']){
+    const b = $(id);
+    b.disabled = on;
+    if (!b.dataset.label) b.dataset.label = b.textContent;
+    b.textContent = on ? text : b.dataset.label;
+  }
+}
+
+async function baixarPDF(){
+  setBusy(true, 'Gerando PDF...');
+  try{
+    const blob = await buildPdf();
+    downloadBlob(blob, nomeArquivo());
+  }catch(e){
+    alert('Não foi possível gerar o PDF: ' + e.message);
+  }finally{
+    setBusy(false);
+  }
+}
+
+async function compartilharPDF(){
+  setBusy(true, 'Gerando PDF...');
+  try{
+    const blob = await buildPdf();
+    const file = new File([blob], nomeArquivo(), {type: 'application/pdf'});
     if (navigator.canShare && navigator.canShare({files: [file]})){
-      await navigator.share({files: [file], title: nome, text: `Relatório de consumo - ${settings.company}`});
+      await navigator.share({files: [file], title: file.name, text: `Relatório de consumo - ${settings.company}`});
     } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nome;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      downloadBlob(blob, file.name);
+      alert('Este aparelho não permite compartilhar arquivos. O PDF foi baixado.');
     }
   }catch(e){
-    if (e.name !== 'AbortError') alert('Não foi possível gerar o PDF: ' + e.message);
+    if (e.name !== 'AbortError') alert('Não foi possível compartilhar: ' + e.message);
   }finally{
-    area.style.cssText = prevStyle;
+    setBusy(false);
   }
 }
 
@@ -472,7 +524,8 @@ $('appList').addEventListener('click', e => {
   updateResult();
 });
 
-$('pdfBtn').addEventListener('click', gerarPDF);
+$('btnBaixar').addEventListener('click', baixarPDF);
+$('btnCompartilhar').addEventListener('click', compartilharPDF);
 
 /* ===== Início ===== */
 load();
