@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora de Consumo</title>
+<style>
+:root{--principal:#2f4a1c;--destaque:#b8b52a}
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;margin:0;background:#f4f6f9;color:#222;font-size:16px}
+header{background:var(--principal);color:#fff;padding:14px;display:flex;align-items:center;gap:12px;border-bottom:4px solid var(--destaque)}
+header img{height:48px;max-width:120px;object-fit:contain;background:#fff;border-radius:6px;padding:3px}
+header h1{font-size:18px;margin:0}
+main{padding:12px;max-width:700px;margin:auto}
+section{background:#fff;border-radius:10px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+h2{font-size:16px;margin:0 0 10px;color:var(--principal)}
+label{display:block;font-size:14px;margin:8px 0 3px;color:#444}
+input{width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:8px}
+input[type=color]{height:48px;padding:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+button{width:100%;padding:14px;font-size:16px;border:0;border-radius:8px;background:var(--principal);color:#fff;margin-top:10px;cursor:pointer}
+button.sec{background:#e8edf3;color:var(--principal)}
+.card{border:1px solid #e1e5ea;border-radius:8px;padding:10px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card small{color:#666}
+.card button{width:auto;margin:0;padding:8px 10px;background:#fbe9e9;color:#a02020;font-size:14px}
+.resumo{background:#eef4fb;border-radius:8px;padding:12px;line-height:1.7;font-size:15px}
+#relatorio{display:none}
+@media print{
+  body *{visibility:hidden}
+  #relatorio,#relatorio *{visibility:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #relatorio{display:block;position:absolute;left:0;top:0;width:100%;padding:10px}
+  @page{size:A4;margin:12mm}
+}
+</style>
+</head>
+<body>
+<header>
+  <img id="logoTopo" style="display:none" alt="Logo">
+  <h1>Calculadora de Consumo</h1>
+</header>
+
+<main>
+<section>
+  <h2>Minha empresa (aparece no PDF)</h2>
+  <div class="grid">
+    <div><label>Nome da empresa</label><input id="empresa" oninput="salvar()"></div>
+    <div><label>Slogan</label><input id="slogan" oninput="salvar()"></div>
+  </div>
+  <label>Logo (imagem)</label>
+  <input id="logoFile" type="file" accept="image/*" onchange="carregarLogo(this)">
+  <div class="grid" style="margin-top:8px">
+    <div><label>Cor principal</label><input id="corPrincipal" type="color" onchange="salvar();aplicarCores()"></div>
+    <div><label>Cor de destaque</label><input id="corDestaque" type="color" onchange="salvar();aplicarCores()"></div>
+  </div>
+</section>
+
+<section>
+  <h2>Cliente</h2>
+  <label>Nome</label><input id="cliente" oninput="salvar()">
+  <label>Endereço</label><input id="endereco" oninput="salvar()">
+  <label>Tarifa (R$/kWh)</label><input id="tarifa" type="number" step="0.01" inputmode="decimal" oninput="atualizar()">
+</section>
+
+<section>
+  <h2>Consumo da conta (kWh), últimos meses</h2>
+  <div class="grid3" id="meses"></div>
+</section>
+
+<section>
+  <h2>Aparelhos</h2>
+  <label>Nome</label><input id="nome">
+  <div class="grid">
+    <div><label>Potência (W)</label><input id="watts" type="number" inputmode="decimal"></div>
+    <div><label>Horas por dia</label><input id="horas" type="number" step="0.1" inputmode="decimal"></div>
+    <div><label>Dias por mês</label><input id="dias" type="number" value="30" inputmode="numeric"></div>
+    <div><label>Quantidade</label><input id="qtd" type="number" value="1" inputmode="numeric"></div>
+  </div>
+  <button onclick="adicionar()">+ Adicionar aparelho</button>
+  <div id="lista"></div>
+</section>
+
+<section>
+  <h2>Resultado</h2>
+  <div class="resumo" id="resumo"></div>
+  <button onclick="gerarRelatorio()">Gerar PDF</button>
+  <button class="sec" onclick="novoCliente()">Novo cliente (limpar dados)</button>
+</section>
+</main>
+
+<div id="relatorio"></div>
+
+<script>
+let estado = {
+  empresa:'Prime Lumen',
+  slogan:'Tecnologia Solar',
+  logo:'',
+  corPrincipal:'#2f4a1c',
+  corDestaque:'#b8b52a',
+  cliente:'',
+  endereco:'',
+  tarifa:'0.90',
+  meses:Array(12).fill(''),
+  aparelhos:[]
+};
+
+function carregar(){
+  try{
+    const s = JSON.parse(localStorage.getItem('calcConsumo'));
+    if(s) estado = {...estado, ...s};
+  }catch(e){}
+}
+
+function salvar(){
+  estado.empresa = document.getElementById('empresa').value;
+  estado.slogan = document.getElementById('slogan').value;
+  estado.corPrincipal = document.getElementById('corPrincipal').value;
+  estado.corDestaque = document.getElementById('corDestaque').value;
+  estado.cliente = document.getElementById('cliente').value;
+  estado.endereco = document.getElementById('endereco').value;
+  estado.tarifa = document.getElementById('tarifa').value;
+  estado.meses = [...document.querySelectorAll('.conta')].map(i => i.value);
+  try{
+    localStorage.setItem('calcConsumo', JSON.stringify(estado));
+  }catch(e){
+    alert('Não foi possível salvar. Tente um logo menor.');
+  }
+}
+
+function montarMeses(){
+  const div = document.getElementById('meses');
+  div.innerHTML = '';
+  for(let i = 0; i < 12; i++){
+    div.innerHTML += `<div><label>Mês ${i+1}</label><input type="number" step="0.1" inputmode="decimal" class="conta" value="${estado.meses[i] || ''}" oninput="salvar();atualizar()"></div>`;
+  }
+}
+
+function aplicarEstado(){
+  document.getElementById('empresa').value = estado.empresa || '';
+  document.getElementById('slogan').value = estado.slogan || '';
+  document.getElementById('corPrincipal').value = estado.corPrincipal;
+  document.getElementById('corDestaque').value = estado.corDestaque;
+  document.getElementById('cliente').value = estado.cliente || '';
+  document.getElementById('endereco').value = estado.endereco || '';
+  document.getElementById('tarifa').value = estado.tarifa || '0.90';
+  if(estado.logo) mostrarLogoTopo(estado.logo);
+  aplicarCores();
+}
+
+function aplicarCores(){
+  document.documentElement.style.setProperty('--principal', estado.corPrincipal);
+  document.documentElement.style.setProperty('--destaque', estado.corDestaque);
+}
+
+function mostrarLogoTopo(src){
+  const img = document.getElementById('logoTopo');
+  img.src = src;
+  img.style.display = 'block';
+}
+
+// Reduz o logo para caber no armazenamento do celular
+function carregarLogo(input){
+  const f = input.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 400 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = img.width * scale;
+      c.height = img.height * scale;
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      estado.logo = c.toDataURL('image/png');
+      salvar();
+      mostrarLogoTopo(estado.logo);
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(f);
+}
+
+function kwhMensal(a){
+  return a.watts * a.horas * a.dias * a.qtd / 1000;
+}
+
+function adicionar(){
+  const a = {
+    nome: document.getElementById('nome').value.trim(),
+    watts: +document.getElementById('watts').value,
+    horas: +document.getElementById('horas').value,
+    dias: +document.getElementById('dias').value,
+    qtd: +document.getElementById('qtd').value || 1
+  };
+  if(!a.nome || !a.watts || !a.horas || !a.dias){
+    alert('Preencha nome, potência, horas por dia e dias por mês.');
+    return;
+  }
+  estado.aparelhos.push(a);
+  ['nome','watts','horas','qtd'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('dias').value = '30';
+  atualizar();
+}
+
+function remover(i){
+  estado.aparelhos.splice(i, 1);
+  atualizar();
+}
+
+function calcular(){
+  const valores = [...document.querySelectorAll('.conta')].map(i => +i.value).filter(v => v > 0);
+  const media = valores.length ? valores.reduce((s,v) => s + v, 0) / valores.length : 0;
+  const tarifa = +document.getElementById('tarifa').value || 0;
+  const brutos = estado.aparelhos.map(kwhMensal);
+  const total = brutos.reduce((s,v) => s + v, 0);
+  const fator = (total > 0 && media > 0) ? media / total : 1;
+  const itens = estado.aparelhos.map((a, i) => ({ nome: a.nome, kwh: brutos[i] * fator }));
+  return { media, tarifa, total, fator, itens, meses: valores.length };
+}
+
+function atualizar(){
+  salvar();
+  const r = calcular();
+  document.getElementById('lista').innerHTML = r.itens.map((it, i) => `
+    <div class="card">
+      <div><b>${it.nome}</b><br><small>${it.kwh.toFixed(1)} kWh/mês · R$ ${(it.kwh * r.tarifa).toFixed(2)}/mês</small></div>
+      <button onclick="remover(${i})">Remover</button>
+    </div>`).join('');
+  document.getElementById('resumo').innerHTML = `
+    <b>Meses informados:</b> ${r.meses}<br>
+    <b>Média da conta:</b> ${r.media.toFixed(1)} kWh/mês<br>
+    <b>Custo médio mensal:</b> R$ ${(r.media * r.tarifa).toFixed(2)}<br>
+    <b>Total estimado pelos aparelhos (sem ajuste):</b> ${r.total.toFixed(1)} kWh/mês<br>
+    <b>Fator de ajuste:</b> ${r.fator.toFixed(2)}`;
+}
+
+function gerarRelatorio(){
+  const r = calcular();
+  const data = new Date().toLocaleDateString('pt-BR');
+  const cp = estado.corPrincipal;
+  const cd = estado.corDestaque;
+  const total = r.itens.reduce((s,i) => s + i.kwh, 0);
+  const td = 'padding:8px;border-bottom:1px solid #ddd;';
+  const linhas = r.itens.map(it => `
+    <tr><td style="${td}">${it.nome}</td>
+    <td style="${td}text-align:right">${it.kwh.toFixed(1)}</td>
+    <td style="${td}text-align:right">R$ ${(it.kwh * r.tarifa).toFixed(2)}</td></tr>`).join('');
+
+  document.getElementById('relatorio').innerHTML = `
+  <div style="font-family:Arial,sans-serif;color:#222">
+    <div style="background:${cp};color:#fff;padding:16px;display:flex;align-items:center;justify-content:space-between;border-bottom:5px solid ${cd}">
+      <div>
+        <div style="font-size:22px;font-weight:bold">${estado.empresa || 'Relatório de Consumo'}</div>
+        <div style="font-size:14px;margin-top:4px;color:${cd}">${estado.slogan || ''}</div>
+        <div style="font-size:13px;margin-top:8px">Relatório de Consumo Estimado de Energia</div>
+      </div>
+      ${estado.logo ? `<img src="${estado.logo}" style="height:64px;background:#fff;border-radius:6px;padding:4px">` : ''}
+    </div>
+    <div style="padding:16px 4px">
+      <p style="line-height:1.6"><b>Cliente:</b> ${estado.cliente || '-'}<br>
+      <b>Endereço:</b> ${estado.endereco || '-'}<br>
+      <b>Data:</b> ${data}</p>
+      <div style="background:${cd}33;border-left:5px solid ${cp};border-radius:6px;padding:12px;margin:12px 0;line-height:1.7">
+        <b>Média histórica da conta:</b> ${r.media.toFixed(1)} kWh/mês<br>
+        <b>Custo médio mensal:</b> R$ ${(r.media * r.tarifa).toFixed(2)}<br>
+        <b>Tarifa considerada:</b> R$ ${r.tarifa.toFixed(2)}/kWh
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead><tr style="background:${cp};color:#fff">
+          <th style="padding:8px;text-align:left">Aparelho</th>
+          <th style="padding:8px;text-align:right">kWh/mês</th>
+          <th style="padding:8px;text-align:right">Custo/mês</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+      <p style="font-size:15px;margin-top:12px;color:${cp}"><b>Total estimado:</b> ${total.toFixed(1)} kWh/mês</p>
+      <p style="font-size:11px;color:#666;margin-top:24px">Valores estimados a partir da potência e do tempo de uso informados. Não substituem a medição do consumo.</p>
+    </div>
+    <div style="background:${cp};height:8px;margin-top:10px"></div>
+  </div>`;
+
+  document.getElementById('relatorio').style.display = 'block';
+  window.print();
+  window.onafterprint = () => document.getElementById('relatorio').style.display = 'none';
+}
+
+function novoCliente(){
+  if(!confirm('Limpar os dados deste cliente (nome, endereço, contas e aparelhos)?')) return;
+  estado.cliente = '';
+  estado.endereco = '';
+  estado.meses = Array(12).fill('');
+  estado.aparelhos = [];
+  aplicarEstado();
+  montarMeses();
+  atualizar();
+}
+
+carregar();
+montarMeses();
+aplicarEstado();
+atualizar();
+</script>
+</body>
+</html>
