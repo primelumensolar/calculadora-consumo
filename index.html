@@ -149,3 +149,334 @@ function applianceKwh(a){
 
 function summary(){
   const vals = client.history.map(h => num(h.kwh)).filter(v => v > 0);
+  const avgKwh = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : 0;
+  const appKwh = client.appliances.reduce((s,a) => s + applianceKwh(a), 0);
+  const t = num(client.tariff);
+  const projKwh = avgKwh + appKwh;
+  return {months: vals.length, tariff: t, avgKwh, avgValue: avgKwh*t, appKwh, appValue: appKwh*t, projKwh, projValue: projKwh*t};
+}
+
+function applySettings(){
+  const st = document.documentElement.style;
+  st.setProperty('--primary', settings.primary);
+  st.setProperty('--accent', settings.accent);
+  $('hdrName').textContent = settings.company;
+  $('hdrSlogan').textContent = settings.slogan;
+  const logo = $('hdrLogo');
+  if (settings.logo){ logo.src = settings.logo; logo.style.display = 'block'; }
+  else { logo.style.display = 'none'; }
+}
+
+function renderSettings(){
+  $('s_company').value = settings.company;
+  $('s_slogan').value = settings.slogan;
+  $('s_primary').value = settings.primary;
+  $('s_accent').value = settings.accent;
+  applySettings();
+}
+
+function renderClient(){
+  $('c_name').value = client.name;
+  $('c_address').value = client.address;
+  $('c_tariff').value = client.tariff;
+}
+
+function renderHistory(){
+  $('histBody').innerHTML = client.history.map((h, i) => `
+    <tr>
+      <td><input data-hi="${i}" data-hf="month" value="${esc(h.month)}" placeholder="mm/aaaa"></td>
+      <td><input data-hi="${i}" data-hf="kwh" value="${esc(h.kwh)}" inputmode="decimal"></td>
+      <td><button class="sec" data-hdel="${i}" style="width:auto;padding:6px 10px;margin:0">X</button></td>
+    </tr>`).join('');
+  $('histInfo').textContent = client.history.length ? '' : 'Nenhum histórico. Envie as contas em PDF ou adicione os meses manualmente.';
+}
+
+function field(label, i, f, val, type='text'){
+  const extra = type === 'number' ? 'inputmode="decimal"' : '';
+  return `<div><label>${label}</label><input type="${type}" ${extra} data-i="${i}" data-f="${f}" value="${esc(val)}"></div>`;
+}
+
+function renderApps(){
+  $('appList').innerHTML = client.appliances.map((a, i) => {
+    const isAc = a.type === 'ac';
+    const head = isAc ? 'Ar-condicionado' : 'Aparelho';
+    const extraField = isAc
+      ? field('Potência (BTU)', i, 'btu', a.btu, 'number')
+      : field('Potência (W)', i, 'watts', a.watts, 'number');
+    return `
+      <div class="item">
+        <button class="del" data-del="${i}">Remover</button>
+        <b>${head} ${i+1}</b>
+        <div class="row">
+          ${field('Nome', i, 'name', a.name)}
+          ${extraField}
+          ${field('Quantidade', i, 'qty', a.qty, 'number')}
+          ${field('Horas por dia', i, 'hours', a.hours, 'number')}
+          ${field('Dias por mês', i, 'days', a.days, 'number')}
+        </div>
+      </div>`;
+  }).join('') || '<p class="small">Nenhum aparelho cadastrado.</p>';
+}
+
+function updateResult(){
+  const s = summary();
+  $('resultBox').innerHTML = `
+    <table>
+      <tr><th>Item</th><th>kWh/mês</th><th>R$/mês</th></tr>
+      <tr><td>Média da conta (${s.months} meses lidos)</td><td>${fmt(s.avgKwh,1)}</td><td>${fmt(s.avgValue)}</td></tr>
+      <tr><td>Consumo dos aparelhos</td><td>${fmt(s.appKwh,1)}</td><td>${fmt(s.appValue)}</td></tr>
+      <tr><td class="total">Projeção total</td><td class="total">${fmt(s.projKwh,1)}</td><td class="total">${fmt(s.projValue)}</td></tr>
+    </table>
+    <p class="small">Tarifa usada: R$ ${fmt(s.tariff)}/kWh</p>`;
+}
+
+function renderAll(){
+  renderSettings();
+  renderClient();
+  renderHistory();
+  renderApps();
+  updateResult();
+}
+
+function fileToDataURL(f){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(f);
+  });
+}
+
+async function scaledLogo(f){
+  const src = await fileToDataURL(f);
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  const s = Math.min(1, 400 / img.width);
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * s);
+  c.height = Math.round(img.height * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/png');
+}
+
+function parseHistory(text){
+  const re = /(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zç]*\.?\s*[\/\-]?\s*(\d{2,4})[^\d]{0,30}?(\d{1,3}(?:\.\d{3})*)\s*(?:kwh)?/gi;
+  const meses = {jan:1, fev:2, mar:3, abr:4, mai:5, jun:6, jul:7, ago:8, set:9, out:10, nov:11, dez:12};
+  const out = [];
+  let m;
+  while ((m = re.exec(text))){
+    const kwh = parseFloat(m[3].replace(/\./g, ''));
+    const ano = m[2].length === 2 ? '20' + m[2] : m[2];
+    const mesNum = meses[m[1].toLowerCase()];
+    if (kwh > 0 && mesNum) out.push({month: String(mesNum).padStart(2,'0') + '/' + ano, kwh: String(kwh)});
+  }
+  return out;
+}
+
+async function gerarPDF(){
+  const s = summary();
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const logo = settings.logo ? `<img src="${settings.logo}">` : '';
+  const apps = client.appliances.length
+    ? client.appliances.map(a => `<tr><td>${esc(a.name) || '-'}${a.type === 'ac' ? ` (${fmt(num(a.btu),0)} BTU)` : ''}</td><td>${num(a.qty) || 1}</td><td>${num(a.hours)} h/dia</td><td>${fmt(applianceKwh(a),1)}</td></tr>`).join('')
+    : '<tr><td colspan="4">Nenhum aparelho</td></tr>';
+  const imgs = billImages.map(src => `<img class="bill" src="${src}">`).join('');
+
+  const area = $('print-area');
+  area.innerHTML = `
+    <div class="rep-head">${logo}<div><h1>${esc(settings.company)}</h1><p>${esc(settings.slogan)}</p></div></div>
+    <h2>Relatório de Consumo de Energia</h2>
+    <p>Cliente: <b>${esc(client.name)}</b><br>Endereço: ${esc(client.address)}<br>Data: ${hoje} &nbsp; Tarifa: R$ ${fmt(s.tariff)}/kWh</p>
+    <h3>Resumo</h3>
+    <table>
+      <tr><th>Item</th><th>kWh/mês</th><th>R$/mês</th></tr>
+      <tr><td>Média da conta (${s.months} meses)</td><td>${fmt(s.avgKwh,1)}</td><td>${fmt(s.avgValue)}</td></tr>
+      <tr><td>Consumo dos aparelhos</td><td>${fmt(s.appKwh,1)}</td><td>${fmt(s.appValue)}</td></tr>
+      <tr><td><b>Projeção total</b></td><td><b>${fmt(s.projKwh,1)}</b></td><td><b>${fmt(s.projValue)}</b></td></tr>
+    </table>
+    <h3>Aparelhos</h3>
+    <table><tr><th>Aparelho</th><th>Qtd</th><th>Uso</th><th>kWh/mês</th></tr>${apps}</table>
+    ${imgs}
+    <div class="foot">${esc(settings.company)} - ${esc(settings.slogan)}</div>`;
+
+  const prevStyle = area.style.cssText;
+  area.style.display = 'block';
+  area.style.position = 'absolute';
+  area.style.left = '-10000px';
+  area.style.top = '0';
+  area.style.width = '794px';
+  area.style.background = '#fff';
+
+  const nome = `Relatorio_${(client.name || 'cliente').replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`;
+  try{
+    const blob = await html2pdf().set({
+      margin: 10,
+      filename: nome,
+      image: {type: 'jpeg', quality: 0.95},
+      html2canvas: {scale: 2, useCORS: true},
+      jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'},
+      pagebreak: {mode: ['css', 'legacy']}
+    }).from(area).outputPdf('blob');
+
+    const file = new File([blob], nome, {type: 'application/pdf'});
+    if (navigator.canShare && navigator.canShare({files: [file]})){
+      await navigator.share({files: [file], title: nome, text: `Relatório de consumo - ${settings.company}`});
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nome;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+  }catch(e){
+    if (e.name !== 'AbortError') alert('Não foi possível gerar o PDF: ' + e.message);
+  }finally{
+    area.style.cssText = prevStyle;
+  }
+}
+
+/* ===== Eventos ===== */
+
+$('saveSettings').addEventListener('click', () => {
+  settings.company = $('s_company').value.trim() || 'Prime Lumen';
+  settings.slogan = $('s_slogan').value.trim();
+  settings.primary = $('s_primary').value;
+  settings.accent = $('s_accent').value;
+  save();
+  applySettings();
+  alert('Configurações salvas.');
+});
+
+$('s_primary').addEventListener('input', () => { settings.primary = $('s_primary').value; applySettings(); });
+$('s_accent').addEventListener('input', () => { settings.accent = $('s_accent').value; applySettings(); });
+
+$('s_logo').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  settings.logo = await scaledLogo(f);
+  save();
+  applySettings();
+});
+
+[['c_name','name'], ['c_address','address'], ['c_tariff','tariff']].forEach(([id, key]) => {
+  $(id).addEventListener('input', e => {
+    client[key] = e.target.value;
+    save();
+    updateResult();
+  });
+});
+
+$('newClient').addEventListener('click', () => {
+  if (!confirm('Limpar os dados do cliente atual?')) return;
+  client = {name:'', address:'', tariff:0.9, history:[], appliances:[]};
+  billImages = [];
+  $('billFile').value = '';
+  save();
+  renderAll();
+});
+
+$('billFile').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  if (!files.length) return;
+  $('histInfo').textContent = 'Lendo contas...';
+  let found = [];
+  billImages = [];
+  try{
+    for (const f of files){
+      const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+      let text = '';
+      for (let p = 1; p <= pdf.numPages; p++){
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        text += tc.items.map(it => it.str).join(' ') + ' ';
+      }
+      found = found.concat(parseHistory(text));
+      for (let p = 1; p <= pdf.numPages && billImages.length < 3; p++){
+        const page = await pdf.getPage(p);
+        const vp = page.getViewport({scale: 1.4});
+        const c = document.createElement('canvas');
+        c.width = vp.width;
+        c.height = vp.height;
+        await page.render({canvasContext: c.getContext('2d'), viewport: vp}).promise;
+        billImages.push(c.toDataURL('image/jpeg', 0.8));
+      }
+    }
+    const map = new Map();
+    found.forEach(h => map.set(h.month, h));
+    client.history = [...map.values()].slice(0, 12);
+    $('histInfo').textContent = client.history.length
+      ? `${client.history.length} meses lidos do PDF. Confira os valores abaixo.`
+      : 'Não foi possível ler os kWh automaticamente. Preencha os meses manualmente.';
+  }catch(err){
+    $('histInfo').textContent = 'Erro ao ler o PDF: ' + err.message;
+  }
+  save();
+  renderHistory();
+  updateResult();
+});
+
+$('addMonth').addEventListener('click', () => {
+  client.history.push({month:'', kwh:''});
+  save();
+  renderHistory();
+  updateResult();
+});
+
+$('histBody').addEventListener('input', e => {
+  const i = e.target.dataset.hi;
+  if (i === undefined) return;
+  client.history[i][e.target.dataset.hf] = e.target.value;
+  save();
+  updateResult();
+});
+
+$('histBody').addEventListener('click', e => {
+  const i = e.target.dataset.hdel;
+  if (i === undefined) return;
+  client.history.splice(Number(i), 1);
+  save();
+  renderHistory();
+  updateResult();
+});
+
+$('addApp').addEventListener('click', () => {
+  client.appliances.push({type:'normal', name:'', watts:'', qty:1, hours:'', days:30});
+  save();
+  renderApps();
+  updateResult();
+});
+
+$('addAc').addEventListener('click', () => {
+  client.appliances.push({type:'ac', name:'Ar-condicionado', btu:'', qty:1, hours:'', days:30});
+  save();
+  renderApps();
+  updateResult();
+});
+
+$('appList').addEventListener('input', e => {
+  const i = e.target.dataset.i;
+  if (i === undefined) return;
+  client.appliances[i][e.target.dataset.f] = e.target.value;
+  save();
+  updateResult();
+});
+
+$('appList').addEventListener('click', e => {
+  const i = e.target.dataset.del;
+  if (i === undefined) return;
+  client.appliances.splice(Number(i), 1);
+  save();
+  renderApps();
+  updateResult();
+});
+
+$('pdfBtn').addEventListener('click', gerarPDF);
+
+/* ===== Início ===== */
+load();
+renderAll();
+</script>
+</body>
+</html>
