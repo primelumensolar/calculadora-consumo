@@ -48,6 +48,7 @@ td input{padding:6px;font-size:14px}
   .foot{margin-top:20px;border-top:2px solid var(--highlight);padding-top:6px;font-size:11px;color:var(--primary)}
 }
 </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 <header>
@@ -325,7 +326,7 @@ $('csvFile').addEventListener('change',async e=>{
 });
 
 // Relatório para impressão / Salvar como PDF
-function gerarPDF(){
+async function gerarPDF(){
   const s=summary();
   const hoje=new Date().toLocaleDateString('pt-BR');
   const logo=settings.logo?`<img src="${settings.logo}">`:'';
@@ -333,7 +334,8 @@ function gerarPDF(){
     ? client.appliances.map(a=>`<tr><td>${esc(a.name)||'-'}${a.type==='ac'?` (${fmt(num(a.btu),0)} BTU)`:''}</td><td>${num(a.qty)||1}</td><td>${num(a.hours)} h/dia</td><td>${fmt(applianceKwh(a),1)}</td></tr>`).join('')
     : '<tr><td colspan="4">Nenhum aparelho</td></tr>';
   const imgs=billImages.map(src=>`<img class="bill" src="${src}">`).join('');
-  $('print-area').innerHTML=`
+  const area=$('print-area');
+  area.innerHTML=`
     <div class="rep-head">${logo}<div><h1>${esc(settings.company)}</h1><p>${esc(settings.slogan)}</p></div></div>
     <h2>Relatório de Consumo de Energia</h2>
     <p>Cliente: <b>${esc(client.name)}</b><br>Endereço: ${esc(client.address)}<br>Data: ${hoje} &nbsp; Tarifa: R$ ${fmt(s.tariff)}/kWh</p>
@@ -348,8 +350,41 @@ function gerarPDF(){
     <table><tr><th>Aparelho</th><th>Qtd</th><th>Uso</th><th>kWh/mês</th></tr>${apps}</table>
     ${imgs}
     <div class="foot">${esc(settings.company)} - ${esc(settings.slogan)}</div>`;
-  window.print();
-}
+
+  // Torna a área visível fora da tela só para gerar o PDF
+  const prevStyle=area.style.cssText;
+  area.style.display='block';
+  area.style.position='absolute';
+  area.style.left='-10000px';
+  area.style.top='0';
+  area.style.width='794px';
+  area.style.background='#fff';
+
+  const nome=`Relatorio_${(client.name||'cliente').replace(/[^a-zA-Z0-9]+/g,'_')}.pdf`;
+  try{
+    const blob=await html2pdf().set({
+      margin:10,
+      filename:nome,
+      image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2,useCORS:true},
+      jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+      pagebreak:{mode:['css','legacy']}
+    }).from(area).outputPdf('blob');
+
+    const file=new File([blob],nome,{type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:nome,text:`Relatório de consumo - ${settings.company}`});
+    }else{
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download=nome; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),10000);
+    }
+  }catch(e){
+    if(e.name!=='AbortError') alert('Não foi possível gerar o PDF: '+e.message);
+  }finally{
+    area.style.cssText=prevStyle;
+  }
 $('pdfBtn').onclick=gerarPDF;
 
 // Novo cliente
