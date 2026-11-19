@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Prime Lumen - Consumo de Energia</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{--primary:#2f4a1c;--accent:#b8b52a;}
@@ -34,18 +34,6 @@ td input{padding:6px;font-size:14px}
 .total{font-weight:bold;color:var(--primary)}
 .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .btns button{margin-top:0}
-/* Estilo do relatório em PDF */
-.report{font-family:system-ui,Arial,sans-serif;color:#222;background:#fff;width:794px;padding:10px}
-.report .rep-head{display:flex;align-items:center;gap:12px;border-bottom:3px solid var(--primary);padding-bottom:8px}
-.report .rep-head img{height:60px;max-width:180px;object-fit:contain}
-.report .rep-head h1{margin:0;color:var(--primary);font-size:22px}
-.report .rep-head p{margin:0;color:var(--accent);font-weight:bold}
-.report h2{color:var(--primary);font-size:18px;margin:14px 0 6px}
-.report h3{color:var(--primary);font-size:15px;margin:14px 0 4px}
-.report table th{background:var(--primary);color:#fff}
-.report table td{font-size:13px}
-.report .bill{width:100%;margin-top:10px;border:1px solid #ccc}
-.report .foot{margin-top:20px;font-size:11px;color:#666;text-align:center;border-top:2px solid var(--accent);padding-top:6px}
 </style>
 </head>
 <body>
@@ -143,6 +131,10 @@ function load(){
 function num(v){ const n = parseFloat(String(v ?? '').replace(',', '.')); return isNaN(n) ? 0 : n; }
 function fmt(v, d=2){ return Number(v || 0).toLocaleString('pt-BR', {minimumFractionDigits:d, maximumFractionDigits:d}); }
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function hexRgb(hex){
+  const h = (hex || '#000000').replace('#', '');
+  return [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)];
+}
 
 function applianceKwh(a){
   const qty = num(a.qty) || 1;
@@ -253,11 +245,19 @@ function fileToDataURL(f){
   });
 }
 
+function loadImage(src){
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
 async function scaledLogo(f){
   const src = await fileToDataURL(f);
-  const img = new Image();
-  img.src = src;
-  await img.decode();
+  const img = await loadImage(src);
+  if (!img) return '';
   const s = Math.min(1, 400 / img.width);
   const c = document.createElement('canvas');
   c.width = Math.round(img.width * s);
@@ -280,7 +280,7 @@ function parseHistory(text){
   return out;
 }
 
-/* ===== Geração e entrega do PDF ===== */
+/* ===== Geração do PDF (jsPDF desenha tudo diretamente) ===== */
 
 function isMobileDevice(){
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.innerWidth < 820);
@@ -290,53 +290,170 @@ function nomeArquivo(){
   return `Relatorio_${(client.name || 'cliente').replace(/[^a-zA-Z0-9]+/g, '_')}.pdf`;
 }
 
-function reportHTML(){
+async function gerarPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit: 'mm', format: 'a4', orientation: 'portrait'});
   const s = summary();
-  const hoje = new Date().toLocaleDateString('pt-BR');
-  const logo = settings.logo ? `<img src="${settings.logo}">` : '';
-  const apps = client.appliances.length
-    ? client.appliances.map(a => `<tr><td>${esc(a.name) || '-'}${a.type === 'ac' ? ` (${fmt(num(a.btu),0)} BTU)` : ''}</td><td>${num(a.qty) || 1}</td><td>${num(a.hours)} h/dia</td><td>${fmt(applianceKwh(a),1)}</td></tr>`).join('')
-    : '<tr><td colspan="4">Nenhum aparelho</td></tr>';
-  const imgs = billImages.map(src => `<img class="bill" src="${src}">`).join('');
-  return `
-    <div class="report">
-      <div class="rep-head">${logo}<div><h1>${esc(settings.company)}</h1><p>${esc(settings.slogan)}</p></div></div>
-      <h2>Relatório de Consumo de Energia</h2>
-      <p>Cliente: <b>${esc(client.name)}</b><br>Endereço: ${esc(client.address)}<br>Data: ${hoje} &nbsp; Tarifa: R$ ${fmt(s.tariff)}/kWh</p>
-      <h3>Resumo</h3>
-      <table>
-        <tr><th>Item</th><th>kWh/mês</th><th>R$/mês</th></tr>
-        <tr><td>Média da conta (${s.months} meses)</td><td>${fmt(s.avgKwh,1)}</td><td>${fmt(s.avgValue)}</td></tr>
-        <tr><td>Consumo dos aparelhos</td><td>${fmt(s.appKwh,1)}</td><td>${fmt(s.appValue)}</td></tr>
-        <tr><td><b>Projeção total</b></td><td><b>${fmt(s.projKwh,1)}</b></td><td><b>${fmt(s.projValue)}</b></td></tr>
-      </table>
-      <h3>Aparelhos</h3>
-      <table><tr><th>Aparelho</th><th>Qtd</th><th>Uso</th><th>kWh/mês</th></tr>${apps}</table>
-      ${imgs}
-      <div class="foot">${esc(settings.company)} - ${esc(settings.slogan)}</div>
-    </div>`;
-}
+  const pri = hexRgb(settings.primary);
+  const acc = hexRgb(settings.accent);
+  const W = 210, M = 15, CW = W - 2 * M, LIMITE = 280;
+  let y = M;
 
-async function buildPdf(){
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;top:0;left:0;width:794px;background:#fff;z-index:99999;';
-  wrap.innerHTML = reportHTML();
-  document.body.appendChild(wrap);
-  try{
-    const imgs = [...wrap.querySelectorAll('img')];
-    await Promise.all(imgs.map(img => (img.complete && img.naturalWidth) ? null : new Promise(r => { img.onload = r; img.onerror = r; })));
-    await new Promise(r => setTimeout(r, 300));
-    return await html2pdf().set({
-      margin: 10,
-      filename: nomeArquivo(),
-      image: {type: 'jpeg', quality: 0.92},
-      html2canvas: {scale: isMobileDevice() ? 1 : 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 794, scrollX: 0, scrollY: 0},
-      jsPDF: {unit: 'mm', format: 'a4', orientation: 'portrait'},
-      pagebreak: {mode: ['css', 'legacy']}
-    }).from(wrap).outputPdf('blob');
-  } finally {
-    wrap.remove();
+  const ensure = h => {
+    if (y + h > LIMITE) { doc.addPage(); y = M; }
+  };
+
+  const sectionTitle = t => {
+    ensure(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...pri);
+    doc.text(t, M, y);
+    y += 2;
+    doc.setDrawColor(...acc);
+    doc.setLineWidth(0.8);
+    doc.line(M, y, W - M, y);
+    y += 6;
+  };
+
+  const drawTable = (headers, rows, widths) => {
+    const rowH = 7;
+    ensure(rowH);
+    doc.setFillColor(...pri);
+    doc.rect(M, y, CW, rowH, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    let x = M;
+    headers.forEach((h, i) => {
+      doc.text(String(h), i === 0 ? x + 2 : x + widths[i] - 2, y + 4.8, {align: i === 0 ? 'left' : 'right'});
+      x += widths[i];
+    });
+    y += rowH;
+    rows.forEach((r, ri) => {
+      ensure(rowH);
+      if (ri % 2 === 0) {
+        doc.setFillColor(243, 245, 239);
+        doc.rect(M, y, CW, rowH, 'F');
+      }
+      doc.setTextColor(30, 30, 30);
+      doc.setFont('helvetica', r.bold ? 'bold' : 'normal');
+      doc.setFontSize(10);
+      let x = M;
+      r.cells.forEach((c, i) => {
+        const txt = doc.splitTextToSize(String(c ?? ''), widths[i] - 4)[0] || '';
+        doc.text(txt, i === 0 ? x + 2 : x + widths[i] - 2, y + 4.8, {align: i === 0 ? 'left' : 'right'});
+        x += widths[i];
+      });
+      y += rowH;
+    });
+    y += 5;
+  };
+
+  // Cabeçalho colorido
+  doc.setFillColor(...pri);
+  doc.rect(0, 0, W, 38, 'F');
+  let tx = M;
+  if (settings.logo){
+    const img = await loadImage(settings.logo);
+    if (img){
+      const ratio = img.naturalWidth / img.naturalHeight;
+      let lh = 22, lw = lh * ratio;
+      if (lw > 50){ lw = 50; lh = lw / ratio; }
+      doc.setFillColor(255, 255, 255);
+      doc.rect(M, 8, lw + 4, lh + 4, 'F');
+      doc.addImage(settings.logo, 'PNG', M + 2, 10, lw, lh);
+      tx = M + lw + 12;
+    }
   }
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text(settings.company, tx, 18);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.setTextColor(...acc);
+  doc.text(settings.slogan, tx, 26);
+  y = 48;
+
+  // Título e dados do cliente
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(...pri);
+  doc.text('Relatório de Consumo de Energia', M, y);
+  y += 9;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(30, 30, 30);
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  [
+    `Cliente: ${client.name || '-'}`,
+    `Endereço: ${client.address || '-'}`,
+    `Data: ${hoje}     Tarifa: R$ ${fmt(s.tariff)}/kWh`
+  ].forEach(linha => {
+    ensure(6);
+    doc.text(linha, M, y);
+    y += 6;
+  });
+  y += 4;
+
+  // Resumo
+  sectionTitle('Resumo');
+  drawTable(
+    ['Item', 'kWh/mês', 'R$/mês'],
+    [
+      {cells: [`Média da conta (${s.months} meses)`, fmt(s.avgKwh, 1), fmt(s.avgValue)]},
+      {cells: ['Consumo dos aparelhos', fmt(s.appKwh, 1), fmt(s.appValue)]},
+      {cells: ['Projeção total', fmt(s.projKwh, 1), fmt(s.projValue)], bold: true}
+    ],
+    [CW - 60, 30, 30]
+  );
+
+  // Aparelhos
+  sectionTitle('Aparelhos');
+  const appRows = client.appliances.length
+    ? client.appliances.map(a => ({
+        cells: [
+          (a.name || '-') + (a.type === 'ac' ? ` (${fmt(num(a.btu), 0)} BTU)` : ''),
+          num(a.qty) || 1,
+          `${num(a.hours)} h/dia`,
+          fmt(applianceKwh(a), 1)
+        ]
+      }))
+    : [{cells: ['Nenhum aparelho cadastrado', '', '', '']}];
+  drawTable(
+    ['Aparelho', 'Qtd', 'Uso', 'kWh/mês'],
+    appRows,
+    [CW - 75, 20, 25, 30]
+  );
+
+  // Contas anexadas
+  for (const src of billImages){
+    const img = await loadImage(src);
+    if (!img) continue;
+    if (y > M + 10) { doc.addPage(); y = M; }
+    let w = CW;
+    let h = w * img.naturalHeight / img.naturalWidth;
+    if (h > 250){
+      h = 250;
+      w = h * img.naturalWidth / img.naturalHeight;
+    }
+    doc.addImage(src, 'JPEG', M + (CW - w) / 2, y, w, h);
+    y += h + 6;
+  }
+
+  // Rodapé em todas as páginas
+  const total = doc.getNumberOfPages();
+  for (let i = 1; i <= total; i++){
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`${settings.company} - ${settings.slogan}`, W / 2, 290, {align: 'center'});
+  }
+
+  return doc.output('blob');
 }
 
 function downloadBlob(blob, name){
@@ -362,7 +479,7 @@ function setBusy(on, text){
 async function baixarPDF(){
   setBusy(true, 'Gerando PDF...');
   try{
-    const blob = await buildPdf();
+    const blob = await gerarPDF();
     downloadBlob(blob, nomeArquivo());
   }catch(e){
     alert('Não foi possível gerar o PDF: ' + e.message);
@@ -374,7 +491,7 @@ async function baixarPDF(){
 async function compartilharPDF(){
   setBusy(true, 'Gerando PDF...');
   try{
-    const blob = await buildPdf();
+    const blob = await gerarPDF();
     const file = new File([blob], nomeArquivo(), {type: 'application/pdf'});
     if (navigator.canShare && navigator.canShare({files: [file]})){
       await navigator.share({files: [file], title: file.name, text: `Relatório de consumo - ${settings.company}`});
