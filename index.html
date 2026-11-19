@@ -287,7 +287,7 @@ function delA(i){ state.appliances.splice(i, 1); save(); renderAppliances(); cal
 function calcAppliance(a){
   if (a.type === 'ar') {
     const watts = a.value * 0.293;
-    return ((watts * a.hours * 30) / 100) * 0.3 * a.qty;
+        return (watts * a.hours * 30 * a.qty) / 1000;
   }
   return (a.value * a.hours * a.days * a.qty) / 1000;
 }
@@ -318,7 +318,8 @@ function calcAll(){
   const apps = state.appliances.map(a => ({...a, kwh: calcAppliance(a)}));
   const total = apps.reduce((s, a) => s + a.kwh, 0);
   const avg = getAvg();
-  const factor = total > 0 && avg > 0 ? avg / total : 0;
+  const factor = 0;
+
 
   $('appResults').innerHTML = apps.map(a => `
     <tr><td>${esc(a.name) || '-'}</td><td>${fmt(a.kwh)}</td><td>${factor ? fmt(a.kwh * factor) : '-'}</td></tr>`).join('');
