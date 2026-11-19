@@ -332,10 +332,10 @@ async function gerarPDF(){
   };
 
   const drawTable = (headers, rows, widths) => {
-    const rowH = 7;
-    ensure(rowH);
+    const headerH = 7;
+    ensure(headerH);
     doc.setFillColor(...pri);
-    doc.rect(M, y, CW, rowH, 'F');
+    doc.rect(M, y, CW, headerH, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
@@ -344,20 +344,30 @@ async function gerarPDF(){
       doc.text(String(h), i === 0 ? x + 2 : x + widths[i] - 2, y + 4.8, {align: i === 0 ? 'left' : 'right'});
       x += widths[i];
     });
-    y += rowH;
+    y += headerH;
+
     rows.forEach((r, ri) => {
+      const fontSize = r.total ? 13 : (r.fontSize || 10);
+      const rowH = r.total ? 11 : 7;
       ensure(rowH);
-      if (ri % 2 === 0) {
+      if (r.total) {
+        doc.setFillColor(232, 236, 224);
+        doc.rect(M, y, CW, rowH, 'F');
+        doc.setDrawColor(...pri);
+        doc.setLineWidth(0.6);
+        doc.line(M, y, W - M, y);
+      } else if (ri % 2 === 0) {
         doc.setFillColor(243, 245, 239);
         doc.rect(M, y, CW, rowH, 'F');
       }
       doc.setTextColor(30, 30, 30);
-      doc.setFont('helvetica', r.bold ? 'bold' : 'normal');
-      doc.setFontSize(10);
+      doc.setFont('helvetica', r.bold || r.total ? 'bold' : 'normal');
+      doc.setFontSize(fontSize);
       let x = M;
+      const baseline = y + rowH / 2 + fontSize * 0.12;
       r.cells.forEach((c, i) => {
         const txt = doc.splitTextToSize(String(c ?? ''), widths[i] - 4)[0] || '';
-        doc.text(txt, i === 0 ? x + 2 : x + widths[i] - 2, y + 4.8, {align: i === 0 ? 'left' : 'right'});
+        doc.text(txt, i === 0 ? x + 2 : x + widths[i] - 2, baseline, {align: i === 0 ? 'left' : 'right'});
         x += widths[i];
       });
       y += rowH;
@@ -412,46 +422,58 @@ async function gerarPDF(){
   });
   y += 4;
 
-  // Resumo
+  // Composição do relatório: demais consumos, ar-condicionado e resumo.
+  // As seções de itens só aparecem quando houver itens cadastrados.
+  const hasOther = (client.otherConsumptions || []).length > 0;
+  const hasAc = (client.appliances || []).length > 0;
+
+  if (hasOther) {
+    sectionTitle('Demais consumos');
+    const otherRows = client.otherConsumptions.map(item => ({
+      cells: [item.name || 'Item não informado', fmt(num(item.kwh), 1)]
+    }));
+    drawTable(
+      ['Item', 'kWh/mês'],
+      otherRows,
+      [CW - 35, 35]
+    );
+  }
+
+  if (hasAc) {
+    sectionTitle('Ar-condicionado');
+    const acRows = client.appliances.map(a => ({
+      cells: [
+        (a.name || 'Ar-condicionado') + ` (${fmt(num(a.btu), 0)} BTU)`,
+        num(a.qty) || 1,
+        fmt(applianceKwh(a), 1)
+      ]
+    }));
+    drawTable(
+      ['Ar-condicionado', 'Qtd', 'kWh/mês'],
+      acRows,
+      [CW - 55, 20, 35]
+    );
+  }
+
+  // O resumo sempre encerra a composição, com a projeção total em destaque.
   sectionTitle('Resumo');
+  const summaryRows = [
+    {cells: [`Média da conta (${s.months} meses)`, fmt(s.avgKwh, 1)]}
+  ];
+  if (hasOther) {
+    summaryRows.push({cells: ['Demais consumos', fmt(s.otherKwh, 1)]});
+  }
+  if (hasAc) {
+    summaryRows.push({cells: ['Ar-condicionado', fmt(s.acKwh, 1)]});
+  }
+  summaryRows.push({
+    cells: ['CONSUMO TOTAL ESTIMADO', `${fmt(s.projKwh, 1)} kWh/mês`],
+    bold: true,
+    total: true
+  });
   drawTable(
-    ['Item', 'kWh/mês'],
-    [
-      {cells: [`Média da conta (${s.months} meses)`, fmt(s.avgKwh, 1)]},
-      {cells: ['Ar-condicionado', fmt(s.acKwh, 1)]},
-      {cells: ['Demais consumos', fmt(s.otherKwh, 1)]},
-      {cells: ['Projeção total', fmt(s.projKwh, 1)], bold: true}
-    ],
-    [CW - 35, 35]
-  );
-
-  // Ar-condicionado: as horas de uso não são exibidas no relatório do cliente.
-  sectionTitle('Ar-condicionado');
-  const acRows = client.appliances.length
-    ? client.appliances.map(a => ({
-        cells: [
-          (a.name || 'Ar-condicionado') + ` (${fmt(num(a.btu), 0)} BTU)`,
-          num(a.qty) || 1,
-          fmt(applianceKwh(a), 1)
-        ]
-      }))
-    : [{cells: ['Nenhum ar-condicionado cadastrado', '', '']}];
-  drawTable(
-    ['Ar-condicionado', 'Qtd', 'kWh/mês'],
-    acRows,
-    [CW - 55, 20, 35]
-  );
-
-  // Demais consumos informados manualmente.
-  sectionTitle('Demais consumos');
-  const otherRows = (client.otherConsumptions || []).length
-    ? client.otherConsumptions.map(item => ({
-        cells: [item.name || 'Item não informado', fmt(num(item.kwh), 1)]
-      }))
-    : [{cells: ['Nenhum consumo adicional cadastrado', '']}];
-  drawTable(
-    ['Item', 'kWh/mês'],
-    otherRows,
+    ['Composição do consumo', 'kWh/mês'],
+    summaryRows,
     [CW - 35, 35]
   );
 
